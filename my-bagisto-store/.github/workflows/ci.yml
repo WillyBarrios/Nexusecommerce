@@ -1,0 +1,93 @@
+# Nombre del flujo de trabajo que se mostrará en la pestaña "Actions" de GitHub.
+name: CI - Laravel Bagisto
+
+# Configura los disparadores (triggers) que inician el flujo de trabajo.
+on:
+  # Se ejecuta en cada push a las ramas "main" y "develop".
+  push:
+    branches: ["main", "develop"]
+  # Se ejecuta en cada pull request dirigido a las ramas "main" y "develop".
+  pull_request:
+    branches: ["main", "develop"]
+
+# Define los trabajos (jobs) que se ejecutarán como parte del flujo de trabajo.
+jobs:
+  # Nombre del trabajo. En este caso, se encarga de construir y probar la aplicación.
+  build-test:
+    # Especifica el tipo de máquina virtual (runner) en la que se ejecutará el trabajo.
+    runs-on: ubuntu-latest
+
+    # Define servicios de contenedor que se ejecutan en segundo plano durante el trabajo.
+    services:
+      # Un servicio de base de datos MySQL.
+      mysql:
+        image: mysql:8
+        ports:
+          - 3306:3306
+        env:
+          # Establece las credenciales para la base de datos de prueba.
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: testing
+        options: >-
+          # Opciones para verificar que el servicio MySQL esté saludable antes de continuar.
+          --health-cmd="mysqladmin ping --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+
+    steps:
+    # Descarga el código fuente del repositorio al runner.
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    # Configura el entorno de PHP utilizando una acción de la comunidad.
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        # Especifica la versión de PHP a utilizar.
+        php-version: "8.2"
+        # Instala las extensiones de PHP necesarias para Laravel/Bagisto.
+        extensions: mbstring, intl, bcmath, pdo_mysql
+        # Deshabilita la recolección de cobertura de código por ahora.
+        coverage: none
+
+    # Crea el archivo de entorno de Laravel a partir del archivo de ejemplo.
+    - name: Copy .env.example
+      run: cp .env.example .env
+
+    # Configura el entorno específico de Laravel.
+    - name: Configure Laravel env
+      run: |
+        php artisan key:generate
+        php artisan config:clear
+
+    # Instala las dependencias de PHP con Composer.
+    - name: Setup Composer
+      run: composer install --no-interaction --prefer-dist
+
+    # Espera explícitamente a que la base de datos MySQL esté lista para aceptar conexiones.
+    # Aunque el health check del servicio ayuda, este es un paso de seguridad adicional.
+    - name: Wait for MySQL
+      run: |
+        for i in {1..15}; do
+          if mysqladmin ping -h 127.0.0.1 --silent; then
+            break
+          fi
+          sleep 2
+        done
+
+    # Ejecuta las migraciones de la base de datos para crear las tablas.
+    - name: Migrate database
+      run: php artisan migrate --force
+
+    # Instala las dependencias de JavaScript/Node.js.
+    - name: Install NPM dependencies
+      run: npm install
+
+    # Compila los assets de frontend (CSS, JS).
+    - name: Build assets
+      run: npm run build
+
+    # Ejecuta la suite de pruebas automatizadas (PHPUnit o Pest).
+    - name: Run Tests (PHPUnit / Pest)
+      run: php artisan test --without-tty

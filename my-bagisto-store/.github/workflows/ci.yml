@@ -54,12 +54,17 @@ jobs:
     # Crea el archivo de entorno de Laravel a partir del archivo de ejemplo.
     - name: Copy .env.example
       run: cp .env.example .env
-
-    # Configura el entorno específico de Laravel.
+      # Genera la llave de forma automatica.
+    - name: Generate key 
+      run:  php artisan key:generate
+        
+    # Configura el entorno de Laravel limpieza.
     - name: Configure Laravel env
       run: |
-        php artisan key:generate
+        php artisan cache:clear
         php artisan config:clear
+        php artisan route:clear
+        php artisan view:clear
 
     # Instala las dependencias de PHP con Composer.
     - name: Setup Composer
